@@ -21,10 +21,9 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>, ()> {
 
     let mut stream = data
         .iter()
-        .cloned()
         .filter(|&b| !matches!(b, b' ' | b'\n' | b'\r' | b'\t'));
 
-    let mut symbols = stream.by_ref().take_while(|&b| b != b'~');
+    let mut symbols = stream.by_ref().take_while(|&b| b != &b'~');
 
     let (tail_len, tail) = loop {
         match symbols.next() {
@@ -37,12 +36,12 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>, ()> {
                     symbols.next(),
                 ) {
                     (Some(b), Some(c), Some(d), Some(e)) => (b, c, d, e),
-                    (None, _, _, _) => break (1, [a, b'u', b'u', b'u', b'u']),
-                    (Some(b), None, _, _) => break (2, [a, b, b'u', b'u', b'u']),
-                    (Some(b), Some(c), None, _) => break (3, [a, b, c, b'u', b'u']),
-                    (Some(b), Some(c), Some(d), None) => break (4, [a, b, c, d, b'u']),
+                    (None, _, _, _) => break (1, [*a, b'u', b'u', b'u', b'u']),
+                    (Some(b), None, _, _) => break (2, [*a, *b, b'u', b'u', b'u']),
+                    (Some(b), Some(c), None, _) => break (3, [*a, *b, *c, b'u', b'u']),
+                    (Some(b), Some(c), Some(d), None) => break (4, [*a, *b, *c, *d, b'u']),
                 };
-                out.extend_from_slice(&word_85([a, b, c, d, e]).ok_or(())?);
+                out.extend_from_slice(&word_85([*a, *b, *c, *d, *e]).ok_or(())?);
             }
             None => break (0, [b'u'; 5]),
         }
