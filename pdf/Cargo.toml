@@ -19,6 +19,8 @@ jpeg2k = ["jp2k"]
 
 [dependencies]
 pdf_derive = { version = "0.1.22", path = "../pdf_derive" }
+pdf-ascii85 = { version = "0.1.0", path = "../ascii85" }
+
 snafu = "0.6.10"
 num-traits = "0.2.14"
 inflate = "0.4.5"
