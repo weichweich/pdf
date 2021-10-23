@@ -14,12 +14,13 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     c.bench_function("encode-small", |b| b.iter(|| decode(encoded)));
 
-    let encoded: Vec<u8> = (0..u8::MAX)
+    let decoded: Vec<u8> = (0..u8::MAX)
         .into_iter()
         .cycle()
-        .take(100 * 1024 * 1024)
+        .take(10 * 1024 * 1024)
         .collect();
-    c.bench_function("encode-100m", |b| b.iter(|| decode(&encoded[..])));
+    let encoded = pdf_ascii85::encode(&decoded[..]);
+    c.bench_function("encode-10mb", |b| b.iter(|| decode(&encoded[..])));
 }
 
 criterion_group!(benches, criterion_benchmark);
