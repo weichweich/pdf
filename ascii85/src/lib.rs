@@ -6,10 +6,6 @@ const NULL_CHAR: u8 = b'u';
 /// The character `z` in the ASCII table represents 4 null bytes (0x0000_0000).
 const NULL_WORD: u8 = b'z';
 
-const START_SEQUENCE: &[u8; 2] = b"<~";
-
-const END_SEQUENCE: &[u8; 2] = b"~>";
-
 fn sym_85(byte: u8) -> Option<u8> {
     match byte {
         b @ 0x21..=0x75 => Some(b - 0x21),
@@ -34,21 +30,8 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>, ()> {
     let mut buf = [NULL_CHAR; 5];
     let mut index = 0;
 
-    // Check and skip the start sequence
-    for _ in 0..START_SEQUENCE.len() {
-        stream.next().map(|char| {
-            buf[index] = *char;
-            index += 1;
-        });
-    }
-    if &buf[..2] == START_SEQUENCE {
-        // reset buffer
-        buf = [NULL_CHAR; 5];
-        index = 0;
-    }
-
     // parse the middle of the buffer
-    for char in stream {
+    while let Some(char) = stream.next() {
         match (char, index) {
             // null word shortcut
             (&NULL_WORD, 0) => out.extend_from_slice(&[0x00_u8; 4]),
@@ -56,40 +39,51 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>, ()> {
             // null word must be aligned at the beginning of a 5 char sequence
             (&NULL_WORD, _) => return Err(()),
 
-            (&b'~', _) => break,
+            // Termination sequence
+            (&b'~', _) => match stream.next() {
+                Some(&b'>') => return Ok(out),
+                Some(_) => return Err(()),
+                None => return Ok(out),
+            },
 
-            // fill the buffer with chars
-            (char, i) if i < buf.len() => {
-                buf[i] = *char;
-                index += 1;
-            }
-
-            // the buffer is full. Parse the word and clear the buffer.
-            (char, _) => {
-                // process full buffer
-                let parsed_word = word_85(buf).ok_or(())?;
-                out.extend_from_slice(&parsed_word);
-
-                buf = [NULL_CHAR; 5];
-                if char != &END_SEQUENCE[0] {
-                    // set index to 1 since we already have the first char of the next round.
-                    buf[0] = *char;
-                    index = 1;
-                } else {
-                    index = 0;
-                    break;
+            // Start sequence
+            (&b'<', _) => {
+                if !out.is_empty() {
+                    return Err(());
+                }
+                match stream.next() {
+                    Some(&b'~') => {}
+                    Some(_) => return Err(()),
+                    None => return Ok(out),
                 }
             }
-        }
-    }
 
-    // parse remainder of the buffer
-    if (1..buf.len()).contains(&index) && &buf[..2] != END_SEQUENCE {
-        let last = word_85(buf).ok_or(())?;
-        out.extend_from_slice(&last[..index - 1]);
-    } else if index == 5 {
-        let parsed_word = word_85(buf).ok_or(())?;
-        out.extend_from_slice(&parsed_word);
+            // Parse ascii85 word
+            (char, _) => {
+                // insert current char
+                buf[index] = *char;
+                index += 1;
+
+                // fill buffer if possible
+                for _ in index..buf.len() {
+                    stream.next().map(|char| {
+                        buf[index] = *char;
+                        index += 1;
+                    });
+                }
+
+                // parse word
+                let parsed_word = word_85(buf).ok_or_else(|| {
+                    log::error!("Invalid buffer: {:?}", buf);
+                    ()
+                })?;
+                out.extend_from_slice(&parsed_word[..index - 1]);
+
+                // reset buffer
+                buf = [NULL_CHAR; 5];
+                index = 0;
+            }
+        }
     }
 
     Ok(out)
@@ -142,6 +136,8 @@ mod tests {
 
     #[test]
     fn successfull_decode() {
+        let _ = env_logger::try_init();
+
         let tests = vec![
             (&b""[..], &"<~~>"[..]),
             (&b""[..], &"~>"[..]),
@@ -161,7 +157,21 @@ mod tests {
         for (i, (plain, codec)) in tests.into_iter().enumerate() {
             let decoded = decode(codec.as_bytes());
             assert!(decoded.is_ok(), "Error in test case #{} ({})", i, codec);
-            assert_eq!(plain, decoded.unwrap(), "Couldn't decode test case #{} ({})", i, codec);
+            assert_eq!(
+                plain,
+                decoded.unwrap(),
+                "Couldn't decode test case #{} ({})",
+                i,
+                codec
+            );
         }
+    }
+
+    #[test]
+    fn successfull_decode_big() {
+        let _ = env_logger::try_init();
+
+        let encoded = b"0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU";
+        assert!(decode(&encoded[..]).is_ok());
     }
 }
