@@ -17,13 +17,9 @@ fn sym_85(byte: u8) -> Option<u8> {
     }
 }
 
-fn word_85([a, b, c, d, e]: [u8; 5]) -> Option<[u8; 4]> {
-    fn s(b: u8) -> Option<u32> {
-        sym_85(b).map(|n| n as u32)
-    }
-    let (a, b, c, d, e) = (s(a)?, s(b)?, s(c)?, s(d)?, s(e)?);
-    let q = (((a * 85 + b) * 85 + c) * 85 + d) * 85 + e;
-    Some(q.to_be_bytes())
+fn word_85([a, b, c, d, e]: [u8; 5]) -> [u8; 4] {
+    let q = (((a as u32 * 85 + b as u32) * 85 + c as u32) * 85 + d as u32) * 85 + e as u32;
+    q.to_be_bytes()
 }
 
 pub fn decode(data: &[u8]) -> Result<Vec<u8>, ()> {
@@ -37,26 +33,27 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>, ()> {
         match symbols.next() {
             Some(&NULL_WORD) => out.extend_from_slice(&[0; 4]),
             Some(&a) => {
+                let a = sym_85(a).ok_or(())?;
                 let (b, c, d, e) = match (
-                    symbols.next(),
-                    symbols.next(),
-                    symbols.next(),
-                    symbols.next(),
+                    symbols.next().map(|n| sym_85(*n)).flatten(),
+                    symbols.next().map(|n| sym_85(*n)).flatten(),
+                    symbols.next().map(|n| sym_85(*n)).flatten(),
+                    symbols.next().map(|n| sym_85(*n)).flatten(),
                 ) {
-                    (Some(&b), Some(&c), Some(&d), Some(&e)) => (b, c, d, e),
-                    (None, _, _, _) => break (1, [a, b'u', b'u', b'u', b'u']),
-                    (Some(&b), None, _, _) => break (2, [a, b, b'u', b'u', b'u']),
-                    (Some(&b), Some(&c), None, _) => break (3, [a, b, c, b'u', b'u']),
-                    (Some(&b), Some(&c), Some(&d), None) => break (4, [a, b, c, d, b'u']),
+                    (Some(b), Some(c), Some(d), Some(e)) => (b, c, d, e),
+                    (None, _, _, _) => break (1, [a, 0, 0, 0, 0]),
+                    (Some(b), None, _, _) => break (2, [a, b, 0, 0, 0]),
+                    (Some(b), Some(c), None, _) => break (3, [a, b, c, 0, 0]),
+                    (Some(b), Some(c), Some(d), None) => break (4, [a, b, c, d, 0]),
                 };
-                out.extend_from_slice(&word_85([a, b, c, d, e]).ok_or(())?);
+                out.extend_from_slice(&word_85([a, b, c, d, e]));
             }
-            None => break (0, [b'u'; 5]),
+            None => break (0, [0; 5]),
         }
     };
 
     if tail_len > 0 {
-        let last = word_85(tail).ok_or(())?;
+        let last = word_85(tail);
         out.extend_from_slice(&last[..tail_len - 1]);
     }
 
