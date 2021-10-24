@@ -1,11 +1,12 @@
 #[macro_use]
 extern crate criterion;
 
+use std::iter;
+
 use criterion::Criterion;
 use pdf_ascii85::decode;
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-
     c.bench_function("encode-empty", |b| b.iter(|| decode(b"<~~>")));
 
     let encoded = r#"<~9jqo^BlbD-BleB1DJ+*+F(f,q/0JhKF<GL>Cj@.4Gp$d7F!,L7@<6@)/0JDEF<G%<+EV:2F!,
@@ -24,6 +25,10 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         .collect();
     let encoded = pdf_ascii85::encode(&decoded[..]);
     c.bench_function("encode-10mb", |b| b.iter(|| decode(&encoded[..])));
+
+    let decoded: Vec<u8> = iter::repeat(b'z').take(10 * 1024 * 1024).collect();
+    let encoded = pdf_ascii85::encode(&decoded[..]);
+    c.bench_function("encode-z", |b| b.iter(|| decode(&encoded[..])));
 }
 
 criterion_group!(benches, criterion_benchmark);
