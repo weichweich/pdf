@@ -32,22 +32,19 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>, ()> {
 
     // parse the middle of the buffer
     while let Some(char) = stream.next() {
-        match (char, index) {
+        match char {
             // null word shortcut
-            (&NULL_WORD, 0) => out.extend_from_slice(&[0x00_u8; 4]),
-
-            // null word must be aligned at the beginning of a 5 char sequence
-            (&NULL_WORD, _) => return Err(()),
+            &NULL_WORD => out.extend_from_slice(&[0x00_u8; 4]),
 
             // Termination sequence
-            (&b'~', _) => match stream.next() {
+            &b'~' => match stream.next() {
                 Some(&b'>') => return Ok(out),
                 Some(_) => return Err(()),
                 None => return Ok(out),
             },
 
             // Start sequence
-            (&b'<', _) => {
+            &b'<' => {
                 if !out.is_empty() {
                     return Err(());
                 }
@@ -59,7 +56,7 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>, ()> {
             }
 
             // Parse ascii85 word
-            (char, _) => {
+            char => {
                 // insert current char
                 buf[index] = *char;
                 index += 1;
@@ -73,10 +70,7 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>, ()> {
                 }
 
                 // parse word
-                let parsed_word = word_85(buf).ok_or_else(|| {
-                    log::error!("Invalid buffer: {:?}", buf);
-                    ()
-                })?;
+                let parsed_word = word_85(buf).ok_or(())?;
                 out.extend_from_slice(&parsed_word[..index - 1]);
 
                 // reset buffer
@@ -136,8 +130,6 @@ mod tests {
 
     #[test]
     fn successfull_decode() {
-        let _ = env_logger::try_init();
-
         let tests = vec![
             (&b""[..], &"<~~>"[..]),
             (&b""[..], &"~>"[..]),
@@ -169,8 +161,6 @@ mod tests {
 
     #[test]
     fn successfull_decode_big() {
-        let _ = env_logger::try_init();
-
         let encoded = b"0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU";
         assert!(decode(&encoded[..]).is_ok());
     }
