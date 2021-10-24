@@ -16,7 +16,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     >uD.RTpAKYo'+CT/5+Cei#DII?(E,9)oF*2M7/c~>"#
         .as_bytes();
 
-    c.bench_function("encode-small", |b| b.iter(|| decode(encoded)));
+    c.bench_function("encode-example", |b| b.iter(|| decode(encoded)));
 
     let decoded: Vec<u8> = (0..u8::MAX)
         .into_iter()
