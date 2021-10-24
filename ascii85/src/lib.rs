@@ -56,6 +56,8 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>, ()> {
             // null word must be aligned at the beginning of a 5 char sequence
             (&NULL_WORD, _) => return Err(()),
 
+            (&b'~', _) => break,
+
             // fill the buffer with chars
             (char, i) if i < buf.len() => {
                 buf[i] = *char;
@@ -65,7 +67,7 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>, ()> {
             // the buffer is full. Parse the word and clear the buffer.
             (char, _) => {
                 // process full buffer
-                let parsed_word = word_85(buf).ok_or( ())?;
+                let parsed_word = word_85(buf).ok_or(())?;
                 out.extend_from_slice(&parsed_word);
 
                 buf = [NULL_CHAR; 5];
@@ -75,18 +77,18 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>, ()> {
                     index = 1;
                 } else {
                     index = 0;
-                    break
+                    break;
                 }
             }
         }
     }
 
     // parse remainder of the buffer
-    if (1..buf.len()).contains(&index) {
+    if (1..buf.len()).contains(&index) && &buf[..2] != END_SEQUENCE {
         let last = word_85(buf).ok_or(())?;
-        out.extend_from_slice(&last[.. index-1]);
+        out.extend_from_slice(&last[..index - 1]);
     } else if index == 5 {
-        let parsed_word = word_85(buf).ok_or( ())?;
+        let parsed_word = word_85(buf).ok_or(())?;
         out.extend_from_slice(&parsed_word);
     }
 
@@ -139,26 +141,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn no_start() {
-        let case = &b"hello world!"[..];
-        let encoded = b"BOu!rD]j7BEbo80~>";
-        let decoded = decode(encoded).unwrap();
-        assert_eq!(case, decoded);
-    }
-
-    #[test]
-    fn remainder() {
+    fn successfull_decode() {
         let tests = vec![
-            (&b"M"[..], &b"9`"[..]),
-            (&b"Ma"[..], &b"9jn"[..]),
-            (&b"Man"[..], &b"9jqo"[..]),
-            (&b"Man "[..], &b"9jqo^"[..]),
-            (&b"Man X"[..], &b"9jqo^=9"[..]),
+            (&b""[..], &"<~~>"[..]),
+            (&b""[..], &"~>"[..]),
+            (&b""[..], &"<~"[..]),
+            (&b"M"[..], &"9`"[..]),
+            (&b"Ma"[..], &"9jn"[..]),
+            (&b"Man"[..], &"9jqo"[..]),
+            (&b"Man "[..], &"9jqo^"[..]),
+            (&b"Man X"[..], &"9jqo^=9"[..]),
+            (&[0; 4], &"z"[..]),
+            (&[0; 4], &"<~z"[..]),
+            (&[0; 4], &"z~>"[..]),
+            (&[0; 4], &"<~z~>"[..]),
+            (&[0; 16], &"zzzz"[..]),
         ];
 
         for (i, (plain, codec)) in tests.into_iter().enumerate() {
-            let decoded = decode(codec).unwrap();
-            assert_eq!(plain, decoded, "Error in test case #{}", i + 1);
+            let decoded = decode(codec.as_bytes());
+            assert!(decoded.is_ok(), "Error in test case #{} ({})", i, codec);
+            assert_eq!(plain, decoded.unwrap(), "Couldn't decode test case #{} ({})", i, codec);
         }
     }
 }
