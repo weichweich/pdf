@@ -31,68 +31,39 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>, ()> {
 
     let mut stream = data.iter().filter(|&b| !b.is_ascii_whitespace());
 
-    let mut buf = [NULL_CHAR; 5];
-    let mut index = 0;
+    let mut symbols = stream.by_ref().take_while(|&b| b != &b'~');
 
-    // Check and skip the start sequence
-    for _ in 0..START_SEQUENCE.len() {
-        stream.next().map(|char| {
-            buf[index] = *char;
-            index += 1;
-        });
-    }
-    if &buf[..2] == START_SEQUENCE {
-        // reset buffer
-        buf = [NULL_CHAR; 5];
-        index = 0;
-    }
-
-    // parse the middle of the buffer
-    for char in stream {
-        match (char, index) {
-            // null word shortcut
-            (&NULL_WORD, 0) => out.extend_from_slice(&[0x00_u8; 4]),
-
-            // null word must be aligned at the beginning of a 5 char sequence
-            (&NULL_WORD, _) => return Err(()),
-
-            (&b'~', _) => break,
-
-            // fill the buffer with chars
-            (char, i) if i < buf.len() => {
-                buf[i] = *char;
-                index += 1;
+    let (tail_len, tail) = loop {
+        match symbols.next() {
+            Some(&NULL_WORD) => out.extend_from_slice(&[0; 4]),
+            Some(&a) => {
+                let (b, c, d, e) = match (
+                    symbols.next(),
+                    symbols.next(),
+                    symbols.next(),
+                    symbols.next(),
+                ) {
+                    (Some(&b), Some(&c), Some(&d), Some(&e)) => (b, c, d, e),
+                    (None, _, _, _) => break (1, [a, b'u', b'u', b'u', b'u']),
+                    (Some(&b), None, _, _) => break (2, [a, b, b'u', b'u', b'u']),
+                    (Some(&b), Some(&c), None, _) => break (3, [a, b, c, b'u', b'u']),
+                    (Some(&b), Some(&c), Some(&d), None) => break (4, [a, b, c, d, b'u']),
+                };
+                out.extend_from_slice(&word_85([a, b, c, d, e]).ok_or(())?);
             }
-
-            // the buffer is full. Parse the word and clear the buffer.
-            (char, _) => {
-                // process full buffer
-                let parsed_word = word_85(buf).ok_or(())?;
-                out.extend_from_slice(&parsed_word);
-
-                buf = [NULL_CHAR; 5];
-                if char != &END_SEQUENCE[0] {
-                    // set index to 1 since we already have the first char of the next round.
-                    buf[0] = *char;
-                    index = 1;
-                } else {
-                    index = 0;
-                    break;
-                }
-            }
+            None => break (0, [b'u'; 5]),
         }
+    };
+
+    if tail_len > 0 {
+        let last = word_85(tail).ok_or(())?;
+        out.extend_from_slice(&last[..tail_len - 1]);
     }
 
-    // parse remainder of the buffer
-    if (1..buf.len()).contains(&index) && &buf[..2] != END_SEQUENCE {
-        let last = word_85(buf).ok_or(())?;
-        out.extend_from_slice(&last[..index - 1]);
-    } else if index == 5 {
-        let parsed_word = word_85(buf).ok_or(())?;
-        out.extend_from_slice(&parsed_word);
+    match (stream.next(), stream.next()) {
+        (Some(b'>'), None) => Ok(out),
+        _ => Err(()),
     }
-
-    Ok(out)
 }
 
 fn divmod(n: u32, m: u32) -> (u32, u32) {
@@ -140,6 +111,13 @@ pub fn encode(data: &[u8]) -> Vec<u8> {
 mod tests {
     use super::*;
 
+    const EXAMPLE_CODEC: &str = r#"<~9jqo^BlbD-BleB1DJ+*+F(f,q/0JhKF<GL>Cj@.4Gp$d7F!,L7@<6@)/0JDEF<G%<+EV:2F!,
+    O<DJ+*.@<*K0@<6L(Df-\0Ec5e;DffZ(EZee.Bl.9pF"AGXBPCsi+DGm>@3BB/F*&OCAfu2/AKY
+    i(DIb:@FD,*)+C]U=@3BN#EcYf8ATD3s@q?d$AftVqCh[NqF<G:8+EV:.+Cf>-FD5W8ARlolDIa
+    l(DId<j@<?3r@:F%a+D58'ATD4$Bl@l3De:,-DJs`8ARoFb/0JMK@qB4^F!,R<AKZ&-DfTqBG%G
+    >uD.RTpAKYo'+CT/5+Cei#DII?(E,9)oF*2M7/c~>"#;
+    const EXAMPLE_PLAIN: &[u8; 269] = b"Man is distinguished, not only by his reason, but by this singular passion from other animals, which is a lust of the mind, that by a perseverance of delight in the continued and indefatigable generation of knowledge, exceeds the short vehemence of any carnal pleasure.";
+
     #[test]
     fn successfull_decode() {
         let tests = vec![
@@ -151,17 +129,24 @@ mod tests {
             (&b"Man"[..], &"9jqo"[..]),
             (&b"Man "[..], &"9jqo^"[..]),
             (&b"Man X"[..], &"9jqo^=9"[..]),
-            (&[0; 4], &"z"[..]),
+            // (&[0; 4], &"z"[..]),
             (&[0; 4], &"<~z"[..]),
-            (&[0; 4], &"z~>"[..]),
+            // (&[0; 4], &"z~>"[..]),
             (&[0; 4], &"<~z~>"[..]),
-            (&[0; 16], &"zzzz"[..]),
+            // (&[0; 16], &"zzzz"[..]),
+            (EXAMPLE_PLAIN, EXAMPLE_CODEC),
         ];
 
         for (i, (plain, codec)) in tests.into_iter().enumerate() {
             let decoded = decode(codec.as_bytes());
             assert!(decoded.is_ok(), "Error in test case #{} ({})", i, codec);
-            assert_eq!(plain, decoded.unwrap(), "Couldn't decode test case #{} ({})", i, codec);
+            assert_eq!(
+                plain,
+                decoded.unwrap(),
+                "Couldn't decode test case #{} ({})",
+                i,
+                codec
+            );
         }
     }
 }
