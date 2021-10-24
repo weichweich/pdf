@@ -1,5 +1,15 @@
 use std::convert::TryInto;
 
+/// The character `u` in the ASCII table represents the null byte (0x00).
+const NULL_CHAR: u8 = b'u';
+
+/// The character `z` in the ASCII table represents 4 null bytes (0x0000_0000).
+const NULL_WORD: u8 = b'z';
+
+const START_SEQUENCE: &[u8; 2] = b"<~";
+
+const END_SEQUENCE: &[u8; 2] = b"~>";
+
 fn sym_85(byte: u8) -> Option<u8> {
     match byte {
         b @ 0x21..=0x75 => Some(b - 0x21),
@@ -19,43 +29,68 @@ fn word_85([a, b, c, d, e]: [u8; 5]) -> Option<[u8; 4]> {
 pub fn decode(data: &[u8]) -> Result<Vec<u8>, ()> {
     let mut out = Vec::with_capacity((data.len() + 4) / 5 * 4);
 
-    let mut stream = data
-        .iter()
-        .filter(|&b| !matches!(b, b' ' | b'\n' | b'\r' | b'\t'));
+    let mut stream = data.iter().filter(|&b| !b.is_ascii_whitespace());
 
-    let mut symbols = stream.by_ref().take_while(|&b| b != &b'~');
+    let mut buf = [NULL_CHAR; 5];
+    let mut index = 0;
 
-    let (tail_len, tail) = loop {
-        match symbols.next() {
-            Some(b'z') => out.extend_from_slice(&[0; 4]),
-            Some(a) => {
-                let (b, c, d, e) = match (
-                    symbols.next(),
-                    symbols.next(),
-                    symbols.next(),
-                    symbols.next(),
-                ) {
-                    (Some(b), Some(c), Some(d), Some(e)) => (b, c, d, e),
-                    (None, _, _, _) => break (1, [*a, b'u', b'u', b'u', b'u']),
-                    (Some(b), None, _, _) => break (2, [*a, *b, b'u', b'u', b'u']),
-                    (Some(b), Some(c), None, _) => break (3, [*a, *b, *c, b'u', b'u']),
-                    (Some(b), Some(c), Some(d), None) => break (4, [*a, *b, *c, *d, b'u']),
-                };
-                out.extend_from_slice(&word_85([*a, *b, *c, *d, *e]).ok_or(())?);
+    // Check and skip the start sequence
+    for _ in 0..START_SEQUENCE.len() {
+        stream.next().map(|char| {
+            buf[index] = *char;
+            index += 1;
+        });
+    }
+    if &buf[..2] == START_SEQUENCE {
+        // reset buffer
+        buf = [NULL_CHAR; 5];
+        index = 0;
+    }
+
+    // parse the middle of the buffer
+    for char in stream {
+        match (char, index) {
+            // null word shortcut
+            (&NULL_WORD, 0) => out.extend_from_slice(&[0x00_u8; 4]),
+
+            // null word must be aligned at the beginning of a 5 char sequence
+            (&NULL_WORD, _) => return Err(()),
+
+            // fill the buffer with chars
+            (char, i) if i < buf.len() => {
+                buf[i] = *char;
+                index += 1;
             }
-            None => break (0, [b'u'; 5]),
+
+            // the buffer is full. Parse the word and clear the buffer.
+            (char, _) => {
+                // process full buffer
+                let parsed_word = word_85(buf).ok_or( ())?;
+                out.extend_from_slice(&parsed_word);
+
+                buf = [NULL_CHAR; 5];
+                if char != &END_SEQUENCE[0] {
+                    // set index to 1 since we already have the first char of the next round.
+                    buf[0] = *char;
+                    index = 1;
+                } else {
+                    index = 0;
+                    break
+                }
+            }
         }
-    };
-
-    if tail_len > 0 {
-        let last = word_85(tail).ok_or(())?;
-        out.extend_from_slice(&last[..tail_len - 1]);
     }
 
-    match (stream.next(), stream.next()) {
-        (Some(b'>'), None) => Ok(out),
-        _ => Err(()),
+    // parse remainder of the buffer
+    if (1..buf.len()).contains(&index) {
+        let last = word_85(buf).ok_or(())?;
+        out.extend_from_slice(&last[.. index-1]);
+    } else if index == 5 {
+        let parsed_word = word_85(buf).ok_or( ())?;
+        out.extend_from_slice(&parsed_word);
     }
+
+    Ok(out)
 }
 
 fn divmod(n: u32, m: u32) -> (u32, u32) {
@@ -104,15 +139,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn base_85() {
-        fn s(b: &[u8]) -> &str {
-            std::str::from_utf8(b).unwrap()
-        }
-    
+    fn no_start() {
         let case = &b"hello world!"[..];
-        let encoded = encode(case);
-        assert_eq!(s(&encoded), "BOu!rD]j7BEbo80~>");
-        let decoded = decode(&encoded).unwrap();
-        assert_eq!(case, &*decoded);
+        let encoded = b"BOu!rD]j7BEbo80~>";
+        let decoded = decode(encoded).unwrap();
+        assert_eq!(case, decoded);
+    }
+
+    #[test]
+    fn remainder() {
+        let tests = vec![
+            (&b"M"[..], &b"9`"[..]),
+            (&b"Ma"[..], &b"9jn"[..]),
+            (&b"Man"[..], &b"9jqo"[..]),
+            (&b"Man "[..], &b"9jqo^"[..]),
+            (&b"Man X"[..], &b"9jqo^=9"[..]),
+        ];
+
+        for (i, (plain, codec)) in tests.into_iter().enumerate() {
+            let decoded = decode(codec).unwrap();
+            assert_eq!(plain, decoded, "Error in test case #{}", i + 1);
+        }
     }
 }
