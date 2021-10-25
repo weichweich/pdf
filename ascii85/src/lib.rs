@@ -22,8 +22,10 @@ fn word_85([a, b, c, d, e]: [u8; 5]) -> Option<[u8; 4]> {
     Some(q.to_be_bytes())
 }
 
-pub fn decode(data: &[u8]) -> Result<Vec<u8>, ()> {
+pub fn decode(mut data: &[u8]) -> Result<Vec<u8>, ()> {
     let mut out = Vec::with_capacity((data.len() + 4) / 5 * 4);
+
+    data.strip_prefix(b"<~").map(|stripped| data = stripped);
 
     let mut stream = data.iter().filter(|&b| !b.is_ascii_whitespace());
 
@@ -43,18 +45,6 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>, ()> {
                 None => return Ok(out),
             },
 
-            // Start sequence
-            &b'<' => {
-                if !out.is_empty() {
-                    return Err(());
-                }
-                match stream.next() {
-                    Some(&b'~') => {}
-                    Some(_) => return Err(()),
-                    None => return Ok(out),
-                }
-            }
-
             // Parse ascii85 word
             char => {
                 // insert current char
@@ -62,11 +52,13 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>, ()> {
                 index += 1;
 
                 // fill buffer if possible
-                for _ in index..buf.len() {
-                    stream.next().map(|char| {
-                        buf[index] = *char;
-                        index += 1;
-                    });
+                for char in stream
+                    .by_ref()
+                    .take_while(|&c| c != &b'~')
+                    .take(buf.len() - index)
+                {
+                    buf[index] = *char;
+                    index += 1;
                 }
 
                 // parse word
@@ -134,11 +126,14 @@ mod tests {
             (&b""[..], &"<~~>"[..]),
             (&b""[..], &"~>"[..]),
             (&b""[..], &"<~"[..]),
-            (&b"M"[..], &"9`"[..]),
-            (&b"Ma"[..], &"9jn"[..]),
-            (&b"Man"[..], &"9jqo"[..]),
-            (&b"Man "[..], &"9jqo^"[..]),
-            (&b"Man X"[..], &"9jqo^=9"[..]),
+            (&b"M"[..], &"9`~>"[..]),
+            (&b"Ma"[..], &"9jn~>"[..]),
+            (&b"Man"[..], &"9jqo~>"[..]),
+            (&b"Man "[..], &"9jqo^~>"[..]),
+            (&b"Man X"[..], &"9jqo^=9~>"[..]),
+            (&b"Man XY"[..], &"9jqo^=BP~>"[..]),
+            (&b"Man XYZ"[..], &"9jqo^=BSf~>"[..]),
+            (&b"Man XYZ "[..], &"9jqo^=BSfM~>"[..]),
             (&[0; 4], &"z"[..]),
             (&[0; 4], &"<~z"[..]),
             (&[0; 4], &"z~>"[..]),
@@ -161,7 +156,8 @@ mod tests {
 
     #[test]
     fn successfull_decode_big() {
-        let encoded = b"0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU0JP==1c70M3&rZI1,CaE2E*TU";
+        let decoded: Vec<u8> = (0..u8::MAX).into_iter().cycle().take(128).collect();
+        let encoded = encode(&decoded[..]);
         assert!(decode(&encoded[..]).is_ok());
     }
 }
