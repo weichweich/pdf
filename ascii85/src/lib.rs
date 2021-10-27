@@ -14,11 +14,8 @@ fn sym_85(byte: u8) -> Option<u8> {
 }
 
 fn word_85([a, b, c, d, e]: [u8; 5]) -> Option<[u8; 4]> {
-    fn s(b: u8) -> Option<u32> {
-        sym_85(b).map(|n| n as u32)
-    }
-    let (a, b, c, d, e) = (s(a)?, s(b)?, s(c)?, s(d)?, s(e)?);
-    let q = (((a * 85 + b) * 85 + c) * 85 + d) * 85 + e;
+    let (a, b, c, d, e) = (sym_85(a)?, sym_85(b)?, sym_85(c)?, sym_85(d)?, sym_85(e)?);
+    let q = (((a as u32 * 85 + b as u32) * 85 + c as u32) * 85 + d as u32) * 85 + e as u32;
     Some(q.to_be_bytes())
 }
 
@@ -26,37 +23,25 @@ pub fn decode(mut data: &[u8]) -> Result<Vec<u8>, ()> {
     let mut out = Vec::with_capacity((data.len() + 4) / 5 * 4);
 
     data.strip_prefix(b"<~").map(|stripped| data = stripped);
+    data.strip_suffix(b"~>").map(|stripped| data = stripped);
 
     let mut stream = data.iter().filter(|&b| !b.is_ascii_whitespace());
 
-    let mut buf = [NULL_CHAR; 5];
-    let mut index = 0;
-
     // parse the middle of the buffer
+    let mut buf = [NULL_CHAR; 5];
     while let Some(char) = stream.next() {
         match char {
             // null word shortcut
             &NULL_WORD => out.extend_from_slice(&[0x00_u8; 4]),
 
-            // Termination sequence
-            &b'~' => match stream.next() {
-                Some(&b'>') => return Ok(out),
-                Some(_) => return Err(()),
-                None => return Ok(out),
-            },
-
             // Parse ascii85 word
             char => {
+                let mut index = 1;
                 // insert current char
-                buf[index] = *char;
-                index += 1;
+                buf[0] = *char;
 
                 // fill buffer if possible
-                for char in stream
-                    .by_ref()
-                    .take_while(|&c| c != &b'~')
-                    .take(buf.len() - index)
-                {
+                for char in stream.by_ref().take(buf.len() - 1) {
                     buf[index] = *char;
                     index += 1;
                 }
@@ -64,10 +49,6 @@ pub fn decode(mut data: &[u8]) -> Result<Vec<u8>, ()> {
                 // parse word
                 let parsed_word = word_85(buf).ok_or(())?;
                 out.extend_from_slice(&parsed_word[..index - 1]);
-
-                // reset buffer
-                buf = [NULL_CHAR; 5];
-                index = 0;
             }
         }
     }
