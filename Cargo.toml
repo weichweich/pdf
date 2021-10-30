@@ -2,5 +2,5 @@
 members = [
     "pdf",
     "pdf_derive",
-    "ascii85",
+    "encoding/*",
 ]
