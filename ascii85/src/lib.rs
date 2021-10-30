@@ -20,11 +20,10 @@ fn word_85([a, b, c, d, e]: [u8; 5]) -> Option<[u8; 4]> {
 }
 
 pub fn decode(mut data: &[u8]) -> Result<Vec<u8>, ()> {
-    let mut out = Vec::with_capacity((data.len() + 4) / 5 * 4);
-
     data.strip_prefix(b"<~").map(|stripped| data = stripped);
     data.strip_suffix(b"~>").map(|stripped| data = stripped);
 
+    let mut out = Vec::with_capacity((data.len() + 4) / 5 * 4);
     let mut stream = data.iter().filter(|&b| !b.is_ascii_whitespace());
 
     // parse the middle of the buffer
