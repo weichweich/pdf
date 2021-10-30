@@ -12,3 +12,5 @@ criterion = "0.3"
 name = "benchmarks"
 harness = false
 
+[lib]
+bench = false
