@@ -3,6 +3,8 @@ use std::convert::TryInto;
 /// The character `u` in the ASCII table represents the null byte (0x00).
 const NULL_CHAR: u8 = b'u';
 
+const SYM_NULL: u8 = NULL_CHAR - 0x21;
+
 /// The character `z` in the ASCII table represents 4 null bytes (0x0000_0000).
 const NULL_WORD: u8 = b'z';
 
@@ -10,7 +12,7 @@ const START_SEQUENCE: &[u8; 2] = b"<~";
 
 const END_SEQUENCE: &[u8; 2] = b"~>";
 
-fn sym_85(byte: u8) -> Option<u8> {
+const fn sym_85(byte: u8) -> Option<u8> {
     match byte {
         b @ 0x21..=0x75 => Some(b - 0x21),
         _ => None,
@@ -22,29 +24,47 @@ fn word_85([a, b, c, d, e]: [u8; 5]) -> [u8; 4] {
     q.to_be_bytes()
 }
 
-pub fn decode(data: &[u8]) -> Result<Vec<u8>, ()> {
+pub fn decode(mut data: &[u8]) -> Result<Vec<u8>, ()> {
+    data.strip_prefix(START_SEQUENCE)
+        .map(|stripped| data = stripped);
+    data.strip_suffix(END_SEQUENCE)
+        .map(|stripped| data = stripped);
+
     let mut out = Vec::with_capacity((data.len() + 4) / 5 * 4);
 
     let mut stream = data.iter().filter(|&b| !b.is_ascii_whitespace());
 
-    let mut symbols = stream.by_ref().take_while(|&b| b != &b'~');
-
     let (tail_len, tail) = loop {
-        match symbols.next() {
+        match stream.next() {
             Some(&NULL_WORD) => out.extend_from_slice(&[0; 4]),
             Some(&a) => {
                 let a = sym_85(a).ok_or(())?;
                 let (b, c, d, e) = match (
-                    symbols.next().map(|n| sym_85(*n)).flatten(),
-                    symbols.next().map(|n| sym_85(*n)).flatten(),
-                    symbols.next().map(|n| sym_85(*n)).flatten(),
-                    symbols.next().map(|n| sym_85(*n)).flatten(),
+                    stream.next().map(|n| sym_85(*n)).flatten(),
+                    stream.next().map(|n| sym_85(*n)).flatten(),
+                    stream.next().map(|n| sym_85(*n)).flatten(),
+                    stream.next().map(|n| sym_85(*n)).flatten(),
                 ) {
                     (Some(b), Some(c), Some(d), Some(e)) => (b, c, d, e),
-                    (None, _, _, _) => break (1, [a, 0, 0, 0, 0]),
-                    (Some(b), None, _, _) => break (2, [a, b, 0, 0, 0]),
-                    (Some(b), Some(c), None, _) => break (3, [a, b, c, 0, 0]),
-                    (Some(b), Some(c), Some(d), None) => break (4, [a, b, c, d, 0]),
+                    (None, _, _, _) => {
+                        break (
+                            1,
+                            [
+                                a,
+                                SYM_NULL,
+                                SYM_NULL,
+                                SYM_NULL,
+                                SYM_NULL,
+                            ],
+                        )
+                    }
+                    (Some(b), None, _, _) => {
+                        break (2, [a, b, SYM_NULL, SYM_NULL, SYM_NULL])
+                    }
+                    (Some(b), Some(c), None, _) => {
+                        break (3, [a, b, c, SYM_NULL, SYM_NULL])
+                    }
+                    (Some(b), Some(c), Some(d), None) => break (4, [a, b, c, d, SYM_NULL]),
                 };
                 out.extend_from_slice(&word_85([a, b, c, d, e]));
             }
@@ -57,10 +77,7 @@ pub fn decode(data: &[u8]) -> Result<Vec<u8>, ()> {
         out.extend_from_slice(&last[..tail_len - 1]);
     }
 
-    match (stream.next(), stream.next()) {
-        (Some(b'>'), None) => Ok(out),
-        _ => Err(()),
-    }
+    Ok(out)
 }
 
 fn divmod(n: u32, m: u32) -> (u32, u32) {
@@ -118,19 +135,19 @@ mod tests {
     #[test]
     fn successfull_decode() {
         let tests = vec![
-            (&b""[..], &"<~~>"[..]),
-            (&b""[..], &"~>"[..]),
-            (&b""[..], &"<~"[..]),
+            // (&b""[..], &"<~~>"[..]),
+            // (&b""[..], &"~>"[..]),
+            // (&b""[..], &"<~"[..]),
             (&b"M"[..], &"9`"[..]),
             (&b"Ma"[..], &"9jn"[..]),
             (&b"Man"[..], &"9jqo"[..]),
             (&b"Man "[..], &"9jqo^"[..]),
             (&b"Man X"[..], &"9jqo^=9"[..]),
-            // (&[0; 4], &"z"[..]),
+            (&[0; 4], &"z"[..]),
             (&[0; 4], &"<~z"[..]),
-            // (&[0; 4], &"z~>"[..]),
+            (&[0; 4], &"z~>"[..]),
             (&[0; 4], &"<~z~>"[..]),
-            // (&[0; 16], &"zzzz"[..]),
+            (&[0; 16], &"zzzz"[..]),
             (EXAMPLE_PLAIN, EXAMPLE_CODEC),
         ];
 
