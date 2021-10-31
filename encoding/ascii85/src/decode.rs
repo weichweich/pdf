@@ -69,7 +69,7 @@ mod tests {
 
     #[test]
     fn successfull_decode() {
-        let tests = crate::tests::test_samles();
+        let tests = crate::tests::decode_samples();
 
         for (i, (plain, codec)) in tests.into_iter().enumerate() {
             let decoded = decode(codec.as_bytes());
