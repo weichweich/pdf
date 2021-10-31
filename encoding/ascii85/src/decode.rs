@@ -37,15 +37,16 @@ fn fill_from_iter(stream: &mut impl Iterator<Item = u8>, buf: &mut [u8]) -> usiz
 ///
 /// The start (`<~`) and end (`~>`) are optional.
 /// The character `z` is interpreted as four zero bytes.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```
+/// use pdf_ascii85::decode;
+///
 /// let encoded = "<~9jqo~>";
-/// let decoded = decode(encoded.as_bytes());
-/// 
-/// assert!(decoded.is_ok());
-/// assert_eq!(String::from_utf8(decoded.unwrap()), "Man".to_string());
+/// let decoded = decode(encoded.as_bytes()).unwrap();
+///
+/// assert_eq!(String::from_utf8(decoded), Ok("Man".to_string()));
 /// ```
 pub fn decode(mut data: &[u8]) -> Result<Vec<u8>, ()> {
     if let Some(stripped) = data.strip_prefix(START_SEQUENCE) {
