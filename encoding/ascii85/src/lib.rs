@@ -27,7 +27,7 @@
 mod decode;
 mod encode;
 
-pub use decode::decode;
+pub use decode::{decode, Ascii85DecodeError};
 pub use encode::encode;
 
 /// The character `u` in the ASCII table represents the null byte (0x00).

@@ -1,5 +1,18 @@
 use crate::{END_SEQUENCE, NULL_CHAR, NULL_WORD, START_SEQUENCE};
 
+#[derive(Copy, Eq, PartialEq, Clone, Debug)]
+pub struct Ascii85DecodeError {
+    /// The index of the character that caused the error.
+    error_index: usize,
+}
+
+impl Ascii85DecodeError {
+    /// Up to which index the buffer contained valid ASCII85 encoded data.
+    pub fn valid_up_to(&self) -> usize {
+        self.error_index.saturating_sub(1)
+    }
+}
+
 /// Maps an ASCII character to a number
 const fn to_number(byte: u8) -> Option<u8> {
     match byte {
@@ -22,10 +35,10 @@ const fn decode_word(word: [u8; 5]) -> [u8; 4] {
 
 /// Fills the byte buffer using the iterator. Returns the number of elements
 /// that where copied to the buffer.
-fn fill_from_iter(stream: &mut impl Iterator<Item = u8>, buf: &mut [u8]) -> usize {
+fn fill_from_iter(stream: &mut impl Iterator<Item = (usize, u8)>, buf: &mut [u8]) -> usize {
     for (i, digit) in buf.iter_mut().enumerate() {
         if let Some(b) = stream.next() {
-            *digit = b;
+            *digit = b.1;
         } else {
             // the index where the iterator ended, index of the last byte written plus 1.
             return i;
@@ -49,7 +62,7 @@ fn fill_from_iter(stream: &mut impl Iterator<Item = u8>, buf: &mut [u8]) -> usiz
 ///
 /// assert_eq!(String::from_utf8(decoded), Ok("Man".to_string()));
 /// ```
-pub fn decode(mut data: &[u8]) -> Result<Vec<u8>, ()> {
+pub fn decode(mut data: &[u8]) -> Result<Vec<u8>, Ascii85DecodeError> {
     if let Some(stripped) = data.strip_prefix(START_SEQUENCE) {
         data = stripped;
     }
@@ -57,21 +70,25 @@ pub fn decode(mut data: &[u8]) -> Result<Vec<u8>, ()> {
         data = stripped;
     }
 
-    let mut stream = data.iter().copied().filter(|&b| !b.is_ascii_whitespace());
+    let mut stream = data
+        .iter()
+        .copied()
+        .enumerate()
+        .filter(|&(_, b)| !b.is_ascii_whitespace());
 
     let mut out = Vec::with_capacity((data.len() + 4) / 5 * 4);
 
     let (tail_len, tail) = loop {
         match stream.next() {
-            Some(NULL_WORD) => out.extend_from_slice(&[0; 4]),
+            Some((_, NULL_WORD)) => out.extend_from_slice(&[0; 4]),
 
-            Some(a) => {
+            Some((index, a)) => {
                 let mut buf = [NULL_CHAR; 5];
                 buf[0] = a;
 
                 let copied = fill_from_iter(&mut stream, &mut buf[1..]);
                 for digit in &mut buf {
-                    *digit = to_number(*digit).ok_or(())?;
+                    *digit = to_number(*digit).ok_or_else(|| Ascii85DecodeError { error_index: index })?;
                 }
                 if copied < 4 {
                     // The buffer was not filled. The stream
