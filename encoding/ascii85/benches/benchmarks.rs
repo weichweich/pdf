@@ -8,7 +8,6 @@ use pdf_ascii85::decode;
 
 const EXAMPLE_PLAIN: &[u8; 269] = b"Man is distinguished, not only by his reason, but by this singular passion from other animals, which is a lust of the mind, that by a perseverance of delight in the continued and indefatigable generation of knowledge, exceeds the short vehemence of any carnal pleasure.";
 
-
 pub fn bench_decode(c: &mut Criterion) {
     c.bench_function("decode-empty", |b| b.iter(|| decode(b"<~~>")));
 
@@ -21,11 +20,7 @@ pub fn bench_decode(c: &mut Criterion) {
 
     c.bench_function("decode-example", |b| b.iter(|| decode(encoded)));
 
-    let decoded: Vec<u8> = (0..u8::MAX)
-        .into_iter()
-        .cycle()
-        .take(10 * 1024 * 1024)
-        .collect();
+    let decoded: Vec<u8> = (0..u8::MAX).into_iter().cycle().take(10 * 1024 * 1024).collect();
     let encoded = pdf_ascii85::encode(&decoded[..]);
     c.bench_function("decode-10mb", |b| b.iter(|| decode(&encoded[..])));
 
@@ -39,11 +34,7 @@ pub fn bench_encode(c: &mut Criterion) {
 
     c.bench_function("encode-example", |b| b.iter(|| decode(&EXAMPLE_PLAIN[..])));
 
-    let decoded: Vec<u8> = (0..u8::MAX)
-        .into_iter()
-        .cycle()
-        .take(10 * 1024 * 1024)
-        .collect();
+    let decoded: Vec<u8> = (0..u8::MAX).into_iter().cycle().take(10 * 1024 * 1024).collect();
     c.bench_function("encode-10mb", |b| b.iter(|| decode(&decoded[..])));
 
     let decoded: Vec<u8> = iter::repeat(0_u8).take(10 * 1024 * 1024).collect();

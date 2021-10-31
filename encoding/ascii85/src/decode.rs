@@ -20,7 +20,8 @@ const fn decode_word(word: [u8; 5]) -> [u8; 4] {
     q.to_be_bytes()
 }
 
-/// Fills the byte buffer using the iterator. Returns the number of elements that where copied to the buffer.
+/// Fills the byte buffer using the iterator. Returns the number of elements
+/// that where copied to the buffer.
 fn fill_from_iter(stream: &mut impl Iterator<Item = u8>, buf: &mut [u8]) -> usize {
     for (i, digit) in buf.iter_mut().enumerate() {
         if let Some(b) = stream.next() {
@@ -101,13 +102,7 @@ mod tests {
         for (i, (plain, codec)) in tests.into_iter().enumerate() {
             let decoded = decode(codec.as_bytes());
             assert!(decoded.is_ok(), "Error in test case #{} ({})", i, codec);
-            assert_eq!(
-                plain,
-                decoded.unwrap(),
-                "Couldn't decode test case #{} ({})",
-                i,
-                codec
-            );
+            assert_eq!(plain, decoded.unwrap(), "Couldn't decode test case #{} ({})", i, codec);
         }
     }
 }

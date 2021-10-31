@@ -16,7 +16,8 @@ fn encode_word(c: [u8; 4]) -> [u8; 5] {
 /// Encodes the byte slice using ASCII85.
 ///
 /// The ending sequence `~>` is appended to the end of the encoding.
-/// Four zero bytes that are aligned correctly will be encoded as the character `z`.
+/// Four zero bytes that are aligned correctly will be encoded as the character
+/// `z`.
 ///
 /// # Example
 ///
@@ -31,9 +32,7 @@ pub fn encode(data: &[u8]) -> Vec<u8> {
     let chunks = data.chunks_exact(4);
     let remainder = chunks.remainder();
     for chunk in chunks {
-        let c: [u8; 4] = chunk
-            .try_into()
-            .expect("The chunk size was ensured with chunks_exact.");
+        let c: [u8; 4] = chunk.try_into().expect("The chunk size was ensured with chunks_exact.");
         if c == [0; 4] {
             buf.push(NULL_WORD);
         } else {
@@ -61,11 +60,7 @@ mod tests {
 
         for (i, (plain, codec)) in tests.into_iter().enumerate() {
             let encoded = String::from_utf8(encode(plain)).expect("must be valid utf-8");
-            assert_eq!(
-                encoded, codec,
-                "Couldn't encode test case #{} ({})",
-                i, codec
-            );
+            assert_eq!(encoded, codec, "Couldn't encode test case #{} ({})", i, codec);
         }
     }
 }
