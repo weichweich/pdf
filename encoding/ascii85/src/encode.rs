@@ -2,30 +2,38 @@ use std::convert::TryInto;
 
 use crate::{END_SEQUENCE, NULL_WORD};
 
-fn divmod(n: u32, m: u32) -> (u32, u32) {
-    (n / m, n % m)
-}
-
-fn a85(n: u32) -> u8 {
-    n as u8 + 0x21
-}
-
 fn encode_word(c: [u8; 4]) -> [u8; 5] {
-    let n = u32::from_be_bytes(c);
-    let (n, e) = divmod(n, 85);
-    let (n, d) = divmod(n, 85);
-    let (n, c) = divmod(n, 85);
-    let (a, b) = divmod(n, 85);
+    let mut n = u32::from_be_bytes(c);
+    let mut out = [0_u8; 5];
+    for i in (0..5).rev() {
+        out[i] = (n % 85) as u8 + 33_u8;
+        n /= 85;
+    }
 
-    [a85(a), a85(b), a85(c), a85(d), a85(e)]
+    out
 }
 
+/// Encodes the byte slice using ASCII85.
+///
+/// The ending sequence `~>` is appended to the end of the encoding.
+/// Four zero bytes that are aligned correctly will be encoded as the character `z`.
+///
+/// # Example
+///
+/// ```
+/// use pdf_ascii85::encode;
+///
+/// let encoded = encode(&[1,2,3,4, 0,0,0,0]);
+/// assert_eq!(encoded, b"!<N?+z~>");
+/// ```
 pub fn encode(data: &[u8]) -> Vec<u8> {
     let mut buf = Vec::with_capacity((data.len() / 4) * 5 + 10);
     let chunks = data.chunks_exact(4);
     let remainder = chunks.remainder();
     for chunk in chunks {
-        let c: [u8; 4] = chunk.try_into().unwrap();
+        let c: [u8; 4] = chunk
+            .try_into()
+            .expect("The chunk size was ensured with chunks_exact.");
         if c == [0; 4] {
             buf.push(NULL_WORD);
         } else {
@@ -54,11 +62,9 @@ mod tests {
         for (i, (plain, codec)) in tests.into_iter().enumerate() {
             let encoded = String::from_utf8(encode(plain)).expect("must be valid utf-8");
             assert_eq!(
-                encoded,
-                codec,
+                encoded, codec,
                 "Couldn't encode test case #{} ({})",
-                i,
-                codec
+                i, codec
             );
         }
     }
