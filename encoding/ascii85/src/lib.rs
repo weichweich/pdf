@@ -1,10 +1,10 @@
 //! # ASCII85 Encoding
 //!
-//! pdf-ascii85 implements ASCII85 encoding. Arbitrary bytes are mapped to the characters in range `b'!'..b'u'`. For
-//! more details on the encoding scheme refere to [Wikipedia](https://en.wikipedia.org/wiki/Ascii85).
+//! pdf-ascii85 implements ASCII85 encoding. Arbitrary bytes are mapped to the
+//! characters in range `b'!'..b'u'`. For more details on the encoding scheme refere to [Wikipedia](https://en.wikipedia.org/wiki/Ascii85).
 //!
-//! The characted `z` encodes four zero bytes, whitespaces are skipped, start (`<~`) and ending sequences (`~>`) are
-//! optional while decoding.
+//! The characted `z` encodes four zero bytes, whitespaces are skipped, start
+//! (`<~`) and ending sequences (`~>`) are optional while decoding.
 //!
 //! ## Decode Example
 //!

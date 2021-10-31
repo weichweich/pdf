@@ -91,7 +91,9 @@ pub fn decode(mut data: &[u8]) -> Result<Vec<u8>, Ascii85DecodeError> {
                     *digit = to_number(*digit).ok_or_else(|| Ascii85DecodeError { error_index: index })?;
                 }
                 if copied < 4 {
-                    // The buffer was not filled. The stream
+                    // The buffer was not filled. The stream stopped while copying.
+                    // Only `copied` elements where put in the buffer by `fill_from_iter`. One
+                    // element was put in manually.
                     break (copied + 1, buf);
                 }
                 out.extend_from_slice(&decode_word(buf));
