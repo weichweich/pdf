@@ -141,125 +141,6 @@ pub fn encode_hex(data: &[u8]) -> Vec<u8> {
     buf
 }
 
-#[inline]
-fn sym_85(byte: u8) -> Option<u8> {
-    match byte {
-        b @ 0x21 ..= 0x75 => Some(b - 0x21),
-        _ => None
-    }
-}
-
-fn word_85([a, b, c, d, e]: [u8; 5]) -> Option<[u8; 4]> {
-    fn s(b: u8) -> Option<u32> { sym_85(b).map(|n| n as u32) }
-    let (a, b, c, d, e) = (s(a)?, s(b)?, s(c)?, s(d)?, s(e)?);
-    let q = (((a * 85 + b) * 85 + c) * 85 + d) * 85 + e;
-    Some(q.to_be_bytes())
-}
-
-fn decode_85(data: &[u8]) -> Result<Vec<u8>> {
-    let mut out = Vec::with_capacity((data.len() + 4) / 5 * 4);
-    
-    let mut stream = data.iter().cloned()
-        .filter(|&b| !matches!(b, b' ' | b'\n' | b'\r' | b'\t'));
-
-    let mut symbols = stream.by_ref()
-        .take_while(|&b| b != b'~');
-
-    let (tail_len, tail) = loop {
-        match symbols.next() {
-            Some(b'z') => out.extend_from_slice(&[0; 4]),
-            Some(a) => {
-                let (b, c, d, e) = match (symbols.next(), symbols.next(), symbols.next(), symbols.next()) {
-                    (Some(b), Some(c), Some(d), Some(e)) => (b, c, d, e),
-                    (None, _, _, _) => break (1, [a, b'u', b'u', b'u', b'u']),
-                    (Some(b), None, _, _) => break (2, [a, b, b'u', b'u', b'u']),
-                    (Some(b), Some(c), None, _) => break (3, [a, b, c, b'u', b'u']),
-                    (Some(b), Some(c), Some(d), None) => break (4, [a, b, c, d, b'u']),
-                };
-                out.extend_from_slice(&word_85([a, b, c, d, e]).ok_or(PdfError::Ascii85TailError)?);
-            }
-            None => break (0, [b'u'; 5])
-        }
-    };
-
-    if tail_len > 0 {
-        let last = word_85(tail).ok_or(PdfError::Ascii85TailError)?;
-        out.extend_from_slice(&last[.. tail_len-1]);
-    }
-
-    match (stream.next(), stream.next()) {
-        (Some(b'>'), None) => Ok(out),
-        _ => Err(PdfError::Ascii85TailError)
-    }
-}
-
-#[inline]
-fn divmod(n: u32, m: u32) -> (u32, u32) {
-    (n / m, n % m)
-}
-
-#[inline]
-fn a85(n: u32) -> u8 {
-    n as u8 + 0x21
-}
-
-#[inline]
-fn base85_chunk(c: [u8; 4]) -> [u8; 5] {
-    let n = u32::from_be_bytes(c);
-    let (n, e) = divmod(n, 85);
-    let (n, d) = divmod(n, 85);
-    let (n, c) = divmod(n, 85);
-    let (a, b) = divmod(n, 85);
-    
-    [a85(a), a85(b), a85(c), a85(d), a85(e)]
-}
-
-fn encode_85(data: &[u8]) -> Vec<u8> {
-    let mut buf = Vec::with_capacity((data.len() / 4) * 5 + 10);
-    let mut chunks = data.chunks_exact(4);
-    for chunk in chunks.by_ref() {
-        let c: [u8; 4] = chunk.try_into().unwrap();
-        if c == [0; 4] {
-            buf.push(b'z');
-        } else {
-            buf.extend_from_slice(&base85_chunk(c));
-        }
-    }
-
-    let r = chunks.remainder();
-    if r.len() > 0 {
-        let mut c = [0; 4];
-        c[.. r.len()].copy_from_slice(r);
-        let out = base85_chunk(c);
-        buf.extend_from_slice(&out[.. r.len() + 1]);
-    }
-    buf.extend_from_slice(b"~>");
-    buf
-}
-
-#[test]
-fn base_85() {
-    fn s(b: &[u8]) -> &str { std::str::from_utf8(b).unwrap() }
-
-    let case = &b"hello world!"[..];
-    let encoded = encode_85(case);
-    assert_eq!(s(&encoded), "BOu!rD]j7BEbo80~>");
-    let decoded = decode_85(&encoded).unwrap();
-    assert_eq!(case, &*decoded);
-    /*
-    assert_eq!(
-        s(&decode_85(
-            &lzw_decode(
-                &decode_85(&include_bytes!("data/t01_lzw+base85.txt")[..]).unwrap(),
-                &LZWFlateParams::default()
-            ).unwrap()
-        ).unwrap()),
-        include_str!("data/t01_plain.txt")
-    );
-    */
-}
-
-
 fn flate_decode(data: &[u8], params: &LZWFlateParams) -> Result<Vec<u8>> {
     let predictor = params.predictor as usize;
     let n_components = params.n_components as usize;
@@ -390,7 +271,7 @@ fn decode_jpx(data: &[u8]) -> Result<Vec<u8>> {
 pub fn decode(data: &[u8], filter: &StreamFilter) -> Result<Vec<u8>> {
     match *filter {
         StreamFilter::ASCIIHexDecode => decode_hex(data),
-        StreamFilter::ASCII85Decode => decode_85(data),
+        StreamFilter::ASCII85Decode => pdf_ascii85::decode(data).map_err(|error| PdfError::Ascii85{ error }),
         StreamFilter::LZWDecode(ref params) => lzw_decode(data, params),
         StreamFilter::FlateDecode(ref params) => flate_decode(data, params),
         StreamFilter::DCTDecode(ref params) => dct_decode(data, params),
@@ -408,7 +289,7 @@ pub fn decode(data: &[u8], filter: &StreamFilter) -> Result<Vec<u8>> {
 pub fn encode(data: &[u8], filter: &StreamFilter) -> Result<Vec<u8>> {
     match *filter {
         StreamFilter::ASCIIHexDecode => Ok(encode_hex(data)),
-        StreamFilter::ASCII85Decode => Ok(encode_85(data)),
+        StreamFilter::ASCII85Decode => Ok(pdf_ascii85::encode(data)),
         StreamFilter::LZWDecode(ref params) => lzw_encode(data, params),
         StreamFilter::FlateDecode (ref _params) => Ok(flate_encode(data)),
         _ => unimplemented!(),

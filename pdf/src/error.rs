@@ -47,7 +47,7 @@ pub enum PdfError {
     HexDecode {pos: usize, bytes: [u8; 2]},
     
     #[snafu(display("Ascii85 tail error"))]
-    Ascii85TailError,
+    Ascii85 { error: pdf_ascii85::DecodeError },
     
     #[snafu(display("Failed to convert '{}' into PredictorType", n))]
     IncorrectPredictorType {n: u8},
