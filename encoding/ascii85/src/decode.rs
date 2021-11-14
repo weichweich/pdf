@@ -32,7 +32,10 @@ const fn to_number(byte: u8) -> Option<u8> {
 /// Decodes 5 ASCII85 bytes to 4 bytes.
 ///
 /// Assumes that the 5 bytes are already mapped to numbers using `to_number`.
-fn decode_word(word: [u8; 5]) -> Option<[u8; 4]> {
+fn decode_word(mut word: [u8; 5]) -> Option<[u8; 4]> {
+    for d in &mut word {
+        *d = to_number(*d)?;
+    }
     let mut q = word[0] as u32;
     q = q * 85 + word[1] as u32;
     q = q * 85 + word[2] as u32;
@@ -98,12 +101,10 @@ pub fn decode(mut data: &[u8]) -> Result<Vec<u8>, DecodeError> {
             Some(a) => {
                 let mut buf = [NULL_CHAR; 5];
                 buf[0] = *a;
-
                 let copied = fill_from_iter(&mut stream, &mut buf[1..]);
-                for digit in &mut buf {
-                    *digit = to_number(*digit).ok_or_else(|| DecodeError::new_with_index(first, a))?;
-                }
+
                 let word = decode_word(buf).ok_or_else(|| DecodeError::new_with_index(first, a))?;
+
                 if copied < 4 {
                     // The buffer was not filled. The stream stopped while copying.
                     out.extend_from_slice(&word[..copied]);
